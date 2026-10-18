@@ -16,7 +16,10 @@ A recon-to-report pipeline for testing devices **you own**, tying Nmap, Nessus, 
 | 6. Decide & exploit | You personally pick and run each module, one at a time — never automated |
 | 7. Report | Log outcome + remediation per finding |
 
+Before Phase 1, you build the Kali VM and put it on the same network as the target — see [`docs/LAB-SETUP.md`](docs/LAB-SETUP.md) for the VM build and exactly how the VM communicates with the target device.
+
 Full phase-by-phase detail, including the exact commands for each stage: [`docs/WORKFLOW.md`](docs/WORKFLOW.md)
+Lab build & VM-to-device networking: [`docs/LAB-SETUP.md`](docs/LAB-SETUP.md)
 Tool setup instructions: [`docs/INSTALLATION.md`](docs/INSTALLATION.md)
 Finding write-up format: [`templates/finding_report_template.md`](templates/finding_report_template.md)
 
@@ -25,6 +28,7 @@ Finding write-up format: [`templates/finding_report_template.md`](templates/find
 ```
 .
 ├── docs/
+│   ├── LAB-SETUP.md       # Kali VM build + how the VM reaches the target device
 │   ├── WORKFLOW.md        # the 7 phases, ground rules, tool reference
 │   └── INSTALLATION.md    # how to install every tool this pipeline uses
 ├── templates/
