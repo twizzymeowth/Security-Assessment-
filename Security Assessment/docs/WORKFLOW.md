@@ -4,6 +4,8 @@
 
 This documents a repeatable process for assessing the security posture of devices you own (or have explicit written authorization to test). It combines discovery, vulnerability scanning, correlation, and reporting into one pipeline, with a required manual checkpoint before any exploit attempt.
 
+> **Prerequisite (Phase 0):** this assumes the Kali VM is already built and on the same network as the target. If it isn't, start with [`LAB-SETUP.md`](LAB-SETUP.md), which covers the VM build and how the VM communicates with the target device.
+
 ## Ground rules
 
 - Only scan devices you own or have explicit written authorization to test.
