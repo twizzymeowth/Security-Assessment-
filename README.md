@@ -55,18 +55,18 @@ ping -c 3 192.168.1.20           # confirm a path to the target
 - **Metasploit** runs on Kali: `RHOSTS` is the target; for payloads that call home, `LHOST` is **Kali's own IP** and the target connects *back* to it — which is why a routable bridged IP matters.
 - **Faraday** runs locally on Kali for reporting (`http://<kali-ip>:5985`); it reads scan files and sends nothing to the target.
 
-Full build + networking walkthrough, including the readiness checklist: [`docs/LAB-SETUP.md`](Security%20Assessment/docs/LAB-SETUP.md).
+Full build + networking walkthrough, including the readiness checklist: [`docs/LAB-SETUP.md`](assessment/docs/LAB-SETUP.md).
 
 ---
 
 ## Full documentation
 
-Everything lives under [`Security Assessment/`](Security%20Assessment/):
+Everything lives under [`assessment/`](assessment/):
 
-- **[`docs/LAB-SETUP.md`](Security%20Assessment/docs/LAB-SETUP.md)** — build the Kali VM, network modes, and exactly how the VM communicates with the target device (Phase 0).
-- **[`docs/INSTALLATION.md`](Security%20Assessment/docs/INSTALLATION.md)** — install Nmap, Nessus, Metasploit, and Faraday on Kali.
-- **[`docs/WORKFLOW.md`](Security%20Assessment/docs/WORKFLOW.md)** — the 7 phases, ground rules, exact commands, and tool reference.
-- **[`templates/finding_report_template.md`](Security%20Assessment/templates/finding_report_template.md)** — consistent per-finding write-up format.
+- **[`docs/LAB-SETUP.md`](assessment/docs/LAB-SETUP.md)** — build the Kali VM, network modes, and exactly how the VM communicates with the target device (Phase 0).
+- **[`docs/INSTALLATION.md`](assessment/docs/INSTALLATION.md)** — install Nmap, Nessus, Metasploit, and Faraday on Kali.
+- **[`docs/WORKFLOW.md`](assessment/docs/WORKFLOW.md)** — the 7 phases, ground rules, exact commands, and tool reference.
+- **[`templates/finding_report_template.md`](assessment/templates/finding_report_template.md)** — consistent per-finding write-up format.
 
 ---
 
@@ -98,7 +98,7 @@ You need admin access to the repo to install the app and add secrets. Never comm
 │   └── workflows/
 │       └── claude.yml              # Claude Code GitHub Action (@claude integration)
 ├── README.md                       # this file
-└── Security Assessment/
+└── assessment/
     ├── README.md                   # pipeline overview
     ├── docs/
     │   ├── LAB-SETUP.md            # Kali VM build + VM-to-device networking (Phase 0)
@@ -115,4 +115,4 @@ Phase 6 — the only phase that touches a target offensively — is a manual `ms
 
 ## License
 
-MIT — see [`Security Assessment/LICENSE`](Security%20Assessment/LICENSE).
+MIT — see [`assessment/LICENSE`](assessment/LICENSE).
