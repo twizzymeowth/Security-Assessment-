@@ -1,0 +1,56 @@
+# Keep assessment results out of git. Scan output contains target IPs,
+# open services, and vulnerabilities, so it must never be committed.
+
+# --- Nmap (e.g. `nmap ... -oA scan_results`) ---
+*.nmap
+*.gnmap
+*.xml
+scan_results*
+
+# --- Nessus exports ---
+*.nessus
+*.nessus.xml
+*.db
+nessus_report*
+
+# --- Metasploit workspaces, loot, and exports ---
+.msf4/
+loot/
+*.msf
+*.rc.log
+msf_*.xml
+metasploit_*
+
+# --- Faraday reports and local install ---
+faraday-venv/
+faraday_*
+*.faraday
+docker-compose.yaml
+.env
+
+# --- General assessment output folders ---
+scans/
+results/
+reports/
+evidence/
+screenshots/
+*.pcap
+*.pcapng
+*.csv
+*.html
+*.pdf
+*.log
+
+# --- Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-*
+
+# --- OS files ---
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
