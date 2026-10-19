@@ -1,1 +1,5 @@
-{"name": "security-assessment-plugin"}
+{
+  "name": "security-assessment-plugin",
+  "description": "A documented recon-to-report security assessment pipeline for authorized testing from a Kali Linux VM, tying Nmap, Nessus, Metasploit, and Faraday into one repeatable workflow with a mandatory manual checkpoint before exploitation.",
+  "version": "0.1.0"
+}
