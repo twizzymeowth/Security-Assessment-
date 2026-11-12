@@ -1,0 +1,12 @@
+# Self-audit schedule — runs ON THIS DEVICE, not on Vercel.
+# Install with: crontab agent/crontab.example   (edit paths/URL first)
+#
+# Set these in the environment or replace inline:
+#   SELFAUDIT_URL=https://your-app.vercel.app
+#   SELFAUDIT_TOKEN=your-agent-token
+
+# Nightly hardening + discovery audit at 02:00
+0 2 * * * cd /opt/selfaudit && /usr/bin/python3 selfaudit.py --dashboard "$SELFAUDIT_URL" --token "$SELFAUDIT_TOKEN" --mode audit >> /var/log/selfaudit.log 2>&1
+
+# Weekly deeper scan on Sunday 03:00 (enable an optional engine in the agent)
+0 3 * * 0 cd /opt/selfaudit && /usr/bin/python3 selfaudit.py --dashboard "$SELFAUDIT_URL" --token "$SELFAUDIT_TOKEN" --mode audit --engine openvas >> /var/log/selfaudit.log 2>&1
