@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SelfAuditResult",
+  "description": "The result payload the agent POSTs to the dashboard /api/audits endpoint.",
+  "type": "object",
+  "required": ["agent_version", "device", "mode", "engines", "started_at", "finished_at", "findings", "summary"],
+  "properties": {
+    "agent_version": { "type": "string" },
+    "device": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable id for this device (e.g. hostname)." },
+        "hostname": { "type": "string" },
+        "os": { "type": "string" },
+        "address": { "type": "string", "description": "The host address audited (default 127.0.0.1)." }
+      }
+    },
+    "mode": { "type": "string", "enum": ["audit", "validate", "both"] },
+    "engines": { "type": "array", "items": { "type": "string", "enum": ["nmap", "lynis", "openvas", "nessus", "metasploit"] } },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ts", "status", "title"],
+        "properties": {
+          "ts": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["ok", "run", "info", "hold", "error"] },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "title", "source"],
+        "properties": {
+          "id": { "type": "string" },
+          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low", "info"] },
+          "title": { "type": "string" },
+          "cve": { "type": "string" },
+          "source": { "type": "string", "enum": ["nmap", "lynis", "openvas", "nessus"] },
+          "port": { "type": "string" },
+          "remediation": { "type": "string" }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["critical", "high", "medium", "low"],
+      "properties": {
+        "critical": { "type": "integer" },
+        "high": { "type": "integer" },
+        "medium": { "type": "integer" },
+        "low": { "type": "integer" }
+      }
+    }
+  }
+}
