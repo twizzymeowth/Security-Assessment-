@@ -60,6 +60,19 @@ function buildCommand(engine: Engine): string {
   return parts.join(' ');
 }
 
+const AGENT_URL = 'https://raw.githubusercontent.com/twizzymeowth/Security-Assessment-/main/agent/selfaudit.py';
+
+function buildSetup(engine: Engine): string {
+  return [
+    '# 1) one-time setup on the device you are auditing',
+    'sudo apt install -y nmap lynis',
+    `curl -O ${AGENT_URL}`,
+    '',
+    '# 2) run the read-only self-audit',
+    buildCommand(engine),
+  ].join('\n');
+}
+
 function download(filename: string, text: string, mime: string) {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
   const a = document.createElement('a');
@@ -119,8 +132,9 @@ export default function Page() {
     setError(null);
   }
 
-  function startScan() {
-    setCommand(buildCommand(engine));
+  function approveAndShow() {
+    setApproved(new Date().toLocaleString());
+    setCommand(buildSetup(engine));
     setCopied(false);
   }
 
@@ -143,12 +157,12 @@ export default function Page() {
         </span>
       </div>
 
-      {/* load report */}
+      {/* run on your device + load results */}
       <section className='mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900'>
         <div className='mb-3 flex items-center justify-between gap-2'>
           <h2 className='flex items-center gap-2 text-sm font-semibold'>
-            Load your results
-            <span className='rounded-full border border-cyan-500/40 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-cyan-700 dark:text-cyan-400'>in browser</span>
+            Run on your device
+            <span className='rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400'>manual</span>
           </h2>
           {!isSample && (
             <button onClick={loadSample} className='font-mono text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'>
@@ -157,6 +171,64 @@ export default function Page() {
           )}
         </div>
 
+        {/* engine picker */}
+        <div className='flex flex-wrap items-center gap-x-6 gap-y-2'>
+          <div className='flex items-center gap-2'>
+            <span className='font-mono text-[11px] uppercase tracking-wide text-slate-400'>Engine</span>
+            <div className='flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-700'>
+              {ENGINE_OPTIONS.map(([v, lbl]) => (
+                <button
+                  key={v}
+                  onClick={() => {
+                    setEngine(v);
+                    setCommand(null);
+                  }}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${engine === v ? 'bg-cyan-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className='min-w-0 flex-1 font-mono text-[11px] text-slate-400'>
+            Baseline nmap + Lynis is free and needs no license. OpenVAS/Nessus are optional. Read-only — never exploits.
+          </p>
+        </div>
+
+        <p className='mt-3 text-sm text-slate-600 dark:text-slate-400'>
+          The scan runs on your machine — this page can&apos;t scan it. Approve your options to get the exact commands, run them on the device you&apos;re auditing, then load the results below.
+        </p>
+
+        <div className='mt-3 flex flex-wrap items-center gap-2'>
+          <button onClick={approveAndShow} className='rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white'>
+            {command ? 'Re-approve & regenerate' : 'Approve options & show commands'}
+          </button>
+          {approved && <span className='font-mono text-[11px] text-emerald-600 dark:text-emerald-400'>approved {approved}</span>}
+        </div>
+
+        {command && (
+          <div className='mt-3'>
+            <div className='font-mono text-[11px] text-slate-400'>
+              Run on the device you&apos;re auditing ({ENGINE_OPTIONS.find(([v]) => v === engine)?.[1]}):
+            </div>
+            <pre className='mt-1 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-200'>{command}</pre>
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(command).then(() => setCopied(true)).catch(() => {});
+              }}
+              className='mt-2 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold dark:border-slate-700'
+            >
+              {copied ? 'Copied' : 'Copy commands'}
+            </button>
+          </div>
+        )}
+
+        <div className='my-4 border-t border-slate-200 dark:border-slate-800' />
+
+        <div className='mb-2 flex items-center gap-2 text-sm font-semibold'>
+          Load the results
+          <span className='rounded-full border border-cyan-500/40 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-cyan-700 dark:text-cyan-400'>in browser</span>
+        </div>
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -168,10 +240,10 @@ export default function Page() {
             setDragging(false);
             handleFiles(e.dataTransfer.files);
           }}
-          className={`rounded-xl border-2 border-dashed p-5 text-center transition-colors ${dragging ? 'border-cyan-500 bg-cyan-500/5' : 'border-slate-300 dark:border-slate-700'}`}
+          className={`rounded-xl border-2 border-dashed p-4 text-center transition-colors ${dragging ? 'border-cyan-500 bg-cyan-500/5' : 'border-slate-300 dark:border-slate-700'}`}
         >
-          <p className='text-sm font-medium'>Drag &amp; drop the results file, or paste the JSON</p>
-          <p className='mt-1 font-mono text-[11px] text-slate-400'>from the command below (<code>selfaudit-report.json</code>) — it never leaves this page</p>
+          <p className='text-sm font-medium'>Drag &amp; drop <code>selfaudit-report.json</code>, or use the buttons</p>
+          <p className='mt-1 font-mono text-[11px] text-slate-400'>the file never leaves this page</p>
           <div className='mt-3 flex flex-wrap justify-center gap-2'>
             <button onClick={() => fileRef.current?.click()} className='rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white'>
               Choose file…
@@ -212,30 +284,6 @@ export default function Page() {
           </div>
         )}
       </section>
-
-      {/* engine picker */}
-      <div className='mt-5 flex flex-wrap items-center gap-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900'>
-        <div className='flex items-center gap-2'>
-          <span className='font-mono text-[11px] uppercase tracking-wide text-slate-400'>Engine</span>
-          <div className='flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-700'>
-            {ENGINE_OPTIONS.map(([v, lbl]) => (
-              <button
-                key={v}
-                onClick={() => {
-                  setEngine(v);
-                  setCommand(null);
-                }}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium ${engine === v ? 'bg-cyan-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
-              >
-                {lbl}
-              </button>
-            ))}
-          </div>
-        </div>
-        <p className='min-w-0 flex-1 font-mono text-[11px] text-slate-400'>
-          Baseline nmap + Lynis is free and needs no license. OpenVAS/Nessus are optional. Audit only — read-only, never auto-exploits.
-        </p>
-      </div>
 
       <div className='mt-5 grid gap-4 md:grid-cols-[1.5fr_1fr]'>
         {/* main column */}
@@ -295,48 +343,6 @@ export default function Page() {
                   <span className='text-right font-mono text-sm tabular-nums'>{latest.summary[k as 'critical']}</span>
                 </div>
               ))}
-            </div>
-          </Card>
-
-          <Card title='Approval checkpoint' badge='manual' badgeTone='amber'>
-            <div className='rounded-xl border border-dashed border-amber-500/60 bg-amber-500/5 p-3.5'>
-              <strong className='text-sm'>Human approval required</strong>
-              <p className='mt-1.5 text-sm text-slate-600 dark:text-slate-400'>
-                Approve the selected options, then start the scan. Nothing runs on this page — approving generates the exact command you run on your device, then you load the results above.
-              </p>
-              <button
-                onClick={() => setApproved(new Date().toLocaleString())}
-                className='mt-3 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white'
-              >
-                {approved ? 'Re-approve options' : 'Approve options'}
-              </button>
-              {approved && (
-                <span className='mt-2 block font-mono text-[11px] text-emerald-600 dark:text-emerald-400'>Approved {approved}</span>
-              )}
-              <button
-                onClick={startScan}
-                disabled={!approved}
-                className='mt-3 block w-full rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40'
-              >
-                ▶ Start scan
-              </button>
-              {command && (
-                <div className='mt-3'>
-                  <div className='font-mono text-[11px] text-slate-400'>Run this on the device you&apos;re auditing:</div>
-                  <pre className='mt-1 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-200'>{command}</pre>
-                  <div className='mt-2 flex items-center gap-2'>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard?.writeText(command).then(() => setCopied(true)).catch(() => {});
-                      }}
-                      className='rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold dark:border-slate-700'
-                    >
-                      {copied ? 'Copied' : 'Copy command'}
-                    </button>
-                    <span className='font-mono text-[11px] text-slate-400'>then load the results above</span>
-                  </div>
-                </div>
-              )}
             </div>
           </Card>
 
