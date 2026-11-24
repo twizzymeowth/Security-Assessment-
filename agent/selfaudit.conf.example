@@ -1,0 +1,30 @@
+# Self-audit configuration — copy to selfaudit.conf and edit.
+#   cp selfaudit.conf.example selfaudit.conf
+
+[general]
+# The host to audit — your own device. Keep this local.
+target = 127.0.0.1
+# Where reports are written. Each run creates a timestamped subfolder here.
+output_dir = ~/selfaudit-reports
+
+[engines]
+# Toggle the engines that run. nmap + lynis are the free, read-only baseline.
+nmap = true
+lynis = true
+openvas = false
+nessus = false
+
+[nessus]
+# Your own local Nessus. Create API keys in Nessus:
+#   Settings -> My Account -> API Keys -> Generate.
+url = https://127.0.0.1:8834
+access_key =
+secret_key =
+# The name of the scan (configured in Nessus) whose results to pull.
+scan_name = Self-Audit
+
+[validation]
+# Opt-in benign defense-validation tests (EICAR + harmless markers). OFF by
+# default and NOT run from the weekly cron unless you set this true or pass
+# --validate. These are not malware or exploits; see the README.
+enabled = false

@@ -1,61 +1,72 @@
-# Self-Audit Agent
+# Self-Audit CLI
 
-The agent runs on the device you want to audit. It runs the scan engines against **the host it runs on**, builds a result JSON (see [`schema.json`](schema.json)), and **writes it to a file**. You then load that file into the dashboard — nothing is uploaded and no server stores your results.
+A single-user, **read-only** self-assessment of **your own device**. One command runs the enabled scan engines against this host, builds a professional report, and writes it to a timestamped folder locally — in four formats (HTML → Save-as-PDF, Markdown, CSV, JSON). Designed to run weekly from cron. Nothing is uploaded anywhere.
 
-You are writing the Python agent; this folder gives you the contract to build against plus a skeleton to complete.
+> ⚠️ **Your own device only.** This audits the machine it runs on. It is a defensive, benign self-check — read-only, with no exploitation.
 
-## Safety contract
+## What's here
 
-- The agent audits **its own host only**. The default target is `127.0.0.1` / the machine's own addresses.
-- Baseline engines are **read-only**: nmap (network exposure) + Lynis (host hardening).
-- It is **read-only end to end**: it reports what it finds and never exploits anything. There is no attack or validation step. (The original manual playbook, including the optional Metasploit lab step, is kept separately under `Security Assessment/` as a template.)
+```
+selfaudit.py            # the CLI (standard library only — no pip installs)
+selfaudit.conf.example  # copy to selfaudit.conf and edit
+crontab.example         # weekly run line
+schema.json             # the report JSON shape
+```
 
-## Engines
-
-| Engine | Role | Required? |
-|---|---|---|
-| nmap | Outside-in: open ports, services, versions (`-sV -sC`, `--script vuln`) | baseline |
-| Lynis | Inside-out: hardening — firewall, SSH, patches, permissions (`lynis audit system`) | baseline |
-| OpenVAS / Greenbone CE | Optional free deep CVE scan | optional |
-| Nessus | Optional deep CVE scan via local Nessus API (bring-your-own key) | optional |
-
-## Install (on the device being audited)
+## Install (on the device you're auditing)
 
 ```bash
-sudo apt install -y nmap lynis        # baseline engines
-# no third-party Python packages needed — the agent is standard library only
+sudo apt install -y nmap lynis            # the free baseline engines
+cp selfaudit.conf.example selfaudit.conf  # then edit it (see below)
 ```
+
+No Python packages are required — the agent uses the standard library only.
+
+## Configure
+
+Edit `selfaudit.conf`:
+
+- `[general] target` — keep it `127.0.0.1` (your own host). `output_dir` — where reports are written (default `~/selfaudit-reports`).
+- `[engines]` — toggle `nmap`, `lynis`, `openvas`, `nessus`. nmap + Lynis are the free, read-only baseline.
+- `[nessus]` — your own local Nessus: `url`, `access_key`, `secret_key` (Nessus → Settings → My Account → API Keys → Generate), and the `scan_name` whose results to pull.
+- `[validation]` — opt-in defense tests, off by default (see below).
 
 ## Run
 
 ```bash
-python3 selfaudit.py --mode audit                 # audit | validate | both
-# writes ./selfaudit-report.json
-
-python3 selfaudit.py --out ~/reports/laptop.json  # choose the output path
-python3 selfaudit.py --out -                       # or print JSON to stdout
+python3 selfaudit.py --config selfaudit.conf
 ```
 
-The script runs the baseline engines, assembles a result matching `schema.json`, and writes it to the file. Then open the dashboard and load that file (drag-and-drop, **Choose file…**, or **Paste JSON**). The dashboard validates, renders and exports it — all in your browser.
+It runs the enabled engines, assembles the report, and writes a timestamped folder under `output_dir`, e.g.:
 
-## Schedule (cron, on the device)
-
-See [`crontab.example`](crontab.example). cron runs on the device and writes a dated report file each run; you load whichever one you want to review into the dashboard. Each machine audits itself on its own schedule.
-
-## Result schema
-
-`schema.json` is the source of truth for what the dashboard expects. Key shape:
-
-```jsonc
-{
-  "agent_version": "0.1.0",
-  "device": { "id": "my-laptop", "hostname": "...", "os": "..." },
-  "mode": "audit",
-  "engines": ["nmap", "lynis"],
-  "started_at": "2026-11-12T02:00:04Z",
-  "finished_at": "2026-11-12T02:00:52Z",
-  "events": [ { "ts": "...", "status": "ok", "title": "...", "detail": "..." } ],
-  "findings": [ { "id": "...", "severity": "high", "title": "...", "cve": "CVE-...", "source": "nmap", "remediation": "..." } ],
-  "summary": { "critical": 0, "high": 0, "medium": 0, "low": 0 }
-}
 ```
+~/selfaudit-reports/2026-11-24_0200/
+  report.html   # open in a browser and Save-as-PDF for the PDF
+  report.md
+  report.csv
+  report.json
+```
+
+## Schedule weekly (cron, on this device)
+
+See [`crontab.example`](crontab.example). Install with `crontab agent/crontab.example` (edit the path first). It runs Sundays at 02:00 and appends to `~/selfaudit-reports/cron.log`. The defense-validation tests are intentionally **not** in the cron line — keep them manual.
+
+## Defense validation (opt-in, off by default)
+
+`--validate` (or `[validation] enabled = true`) runs **benign, standard detection-test artifacts** and records whether your controls allowed or blocked each one. It rolls into the report as a **Defense validation** section.
+
+**What it is:**
+- The **EICAR anti-malware test string** — the industry-standard, harmless file every AV recognizes. The test writes it, checks whether a control removed/quarantined it, then deletes it.
+- A **benign execution marker** — writes and detects a harmless timestamped marker (a logging/visibility check), then deletes it.
+
+**What it is NOT:** it contains no real malware and no exploit payloads. Each test is clearly labeled, non-destructive, leaves nothing persistent, and cleans up after itself. It is kept **out of the weekly cron run** unless you turn it on.
+
+Real exploit validation (actual Metasploit) is **not** automated here — it stays a manual, case-by-case step documented in the [`Security Assessment/`](../Security%20Assessment/) template playbook.
+
+```bash
+python3 selfaudit.py --config selfaudit.conf --validate
+```
+
+## Completing the engines
+
+`selfaudit.py` is a working skeleton: report generation (and the validation tests) run out of the box, so every run produces a valid report. The per-engine **result → findings** parsing (nmap output, the Lynis report, OpenVAS/GVM results) and the **Nessus API field mapping** are marked with `TODO` — fill those in for your setup and each engine's findings get richer. See [`schema.json`](schema.json) for the finding shape.
