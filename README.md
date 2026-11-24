@@ -1,57 +1,60 @@
-# Security-Assessment- · Self-Audit Tool
+# Security-Assessment- · Self-Audit CLI
 
-A self-assessment tool you run against **your own device**. A small **agent** runs on the device, audits *that same machine*, and writes a results file. You load that file into a **dashboard** (hostable on Vercel) that renders and exports it **entirely in your browser**. It uses the same kind of tooling as a formal assessment — nmap, Lynis, optionally OpenVAS or Nessus — reframed so a person can safely check their own posture. It is read-only: it reports, it does not exploit.
+A single-user, **read-only** self-assessment tool you run against **your own device**. One command runs the scan engines against the host it runs on, builds a professional report, and writes it locally in four formats (HTML → Save-as-PDF, Markdown, CSV, JSON). It's built to run **weekly from cron**. It uses the same kind of tooling as a formal assessment — nmap, Lynis, and your own Nessus (optionally OpenVAS) — reframed so you can safely check your own posture. Nothing is hosted and nothing is uploaded.
 
 The original recon-to-report playbook is kept, unchanged, as the **template** this tool is built on (see [`Security Assessment/`](Security%20Assessment/)).
 
-> ⚠️ **Your own device only.** The agent audits the machine it runs on. It is a defensive, benign self-check — read-only by default, with any exploit step kept manual and off by default.
+> ⚠️ **Your own device only.** This audits the machine it runs on. It is a defensive, benign self-check — read-only, with any exploit step kept manual and out of automation.
 
 ---
 
-## The safety model (why this is safe to host, even publicly)
-
-**The server stores nothing and scans nothing.** The dashboard is a static front end with no backend and no database.
-
-- The **agent** runs on *your* machine and audits *that* machine (localhost / its own host), writing a results file.
-- The **dashboard** only *reads a file you hand it*, in your browser, and renders/exports it. It has no endpoints and nothing is uploaded.
-- Because the hosted side can't be pointed at a device and never receives data, opening it up to other people only lets each of them view **their own** report on **their own** machine.
+## How it works
 
 ```
-  Your device                              Dashboard (static, in-browser)
-  ┌──────────────────────┐                ┌──────────────────────┐
-  │ agent (Python)        │  writes        │  you load the file    │
-  │  nmap · Lynis         │ ──────────►    │  validate · render    │
-  │  (opt) OpenVAS/Nessus │  report.json   │  timeline · findings  │
-  │  audits THIS host     │  (you load it) │  export md/json/pdf   │
-  └──────────────────────┘                └──────────────────────┘
-     scanning happens here                   nothing is uploaded or stored
+  Your device
+  ┌───────────────────────────────────────────────┐
+  │ selfaudit.py  (one command, from cron weekly)   │
+  │   nmap · Lynis · (opt) OpenVAS · Nessus          │
+  │   audits THIS host, read-only                    │
+  │        │                                         │
+  │        ▼                                         │
+  │  ~/selfaudit-reports/2026-11-24_0200/            │
+  │     report.html  report.md  report.csv  report.json
+  └───────────────────────────────────────────────┘
+      everything stays on your machine
 ```
+
+- A single config file (`agent/selfaudit.conf`) sets the target, output folder, which engines run, and your Nessus keys.
+- Each run writes a **timestamped report folder** with the same executive-summary / severity / findings layout in all four formats. Open `report.html` and Save-as-PDF for the PDF.
+- Schedule it weekly with the provided crontab line.
+
+Full setup, Nessus config, and the schedule are in [`agent/README.md`](agent/README.md).
+
+## Engines
+
+- **Baseline, free, always sensible:** **nmap** (what's exposed on the host) **+ Lynis** (how the host is hardened). Read-only.
+- **Optional deep CVE scan:** **Nessus** via its local REST API (bring-your-own key — even free Nessus Essentials), or **OpenVAS / Greenbone CE** (free). All results merge into one findings list.
+
+## Defense validation (opt-in, off by default)
+
+An optional mode (`--validate`) runs **benign, standard detection-test artifacts** and reports whether your device's controls allowed or blocked each — the EICAR anti-malware test string and harmless "did it run" markers (the Atomic Red Team "did my control notice this?" approach). These contain **no real malware and no exploit payloads**: each test is labeled, non-destructive, cleans up after itself, and leaves nothing persistent. It's kept **out of the weekly cron run** unless you turn it on.
+
+Real exploit validation (actual Metasploit) is **not** automated — it stays a manual, case-by-case step documented only in the [`Security Assessment/`](Security%20Assessment/) template playbook.
 
 ---
 
-## What it does
+## Quick start
 
-| Stage | What happens | Engine | Runs |
-|---|---|---|---|
-| Discovery | What's exposed on this host — open ports, services, versions | nmap | automated |
-| Hardening audit | Config/rules in place — firewall, SSH, patches, permissions | Lynis | automated |
-| Deep CVE scan *(optional)* | Fuller vulnerability coverage | OpenVAS or Nessus | automated |
-| Correlate | Rank findings, match to references | agent | automated |
-| Checkpoint | You review the options and approve before running | — | **manual** |
-| Report | Load the results file and export the posture report | agent → dashboard | on demand |
+```bash
+# on the device you're auditing
+sudo apt install -y nmap lynis
+cd agent
+cp selfaudit.conf.example selfaudit.conf   # edit: output dir, engine toggles, Nessus keys
+python3 selfaudit.py --config selfaudit.conf
+# → writes ~/selfaudit-reports/<timestamp>/{report.html,md,csv,json}
+```
 
-### Engines — free by default, nothing required
-
-The scan engine is pluggable, layered in this order:
-
-- **Baseline, always on (free):** **nmap** (outside-in: what the network sees) **+ Lynis** (inside-out: how the host is configured). These are complementary — exposure *and* hardening — and run every audit.
-- **Optional deep CVE scan — pick one:** **OpenVAS / Greenbone CE** (free) **or** **Nessus** (bring-your-own key; even free Nessus Essentials works, capped at 16 IPs).
-
-All engine results merge into one findings list, deduped by host + CVE, so adding an engine enriches the same report instead of splitting it. Someone with nothing extra still gets a real audit from the baseline.
-
-### Audit only
-
-The tool is read-only: it runs the scan engines and reports what it finds. It never exploits anything, and there is no attack or validation step. The original manual playbook — which does include an optional Metasploit lab step — is kept intact under `Security Assessment/` as a template for anyone who wants to run that by hand.
+Schedule it weekly: `crontab agent/crontab.example` (edit the path first).
 
 ---
 
@@ -60,64 +63,24 @@ The tool is read-only: it runs the scan engines and reports what it finds. It ne
 ```
 .
 ├── README.md                  # this file
-├── web/                       # the dashboard — Next.js + Tailwind, static, deploy to Vercel
-│   ├── app/                   # the in-browser viewer (loads + validates + exports a report file)
-│   └── README.md              # Vercel + v0 setup
-├── agent/                     # the local self-audit agent (Python)
-│   ├── README.md              # how it works, install, schedule
-│   ├── schema.json            # the result JSON the dashboard expects
-│   ├── selfaudit.py           # skeleton to complete
-│   ├── crontab.example        # scheduled self-audits
-│   └── requirements.txt
+├── agent/                     # the self-audit CLI (Python, standard library only)
+│   ├── selfaudit.py           # the tool
+│   ├── selfaudit.conf.example # copy to selfaudit.conf and edit
+│   ├── crontab.example        # weekly schedule
+│   ├── schema.json            # the report JSON shape
+│   └── README.md              # setup, Nessus config, schedule, validation mode
 └── Security Assessment/       # the original playbook, kept as the TEMPLATE
     ├── docs/                  # LAB-SETUP, INSTALLATION, WORKFLOW
     └── templates/
 ```
 
-The `Security Assessment/` playbook is the reference the tool automates — kept intact so you can always follow it by hand.
-
----
-
-## Deploy the dashboard (Vercel) and iterate in v0
-
-**Vercel:** on [vercel.com](https://vercel.com) → *Add New → Project → Import* this GitHub repo → set **Root Directory** to `web/` → Deploy. Every push to the repo then auto-deploys. No environment variables or storage to set up — it's a static front end. Full steps are in [`web/README.md`](web/README.md).
-
-**v0:** the dashboard is plain Next.js + Tailwind, so you can link this repo to [v0](https://v0.dev) and keep editing the UI there. The chain is **v0 → this repo → Vercel**, one source of truth.
-
----
-
-## Run the agent on your device
-
-The agent is a Python program you run on the machine you want to audit. It runs nmap + Lynis against the host, builds a result JSON, and writes it to a file. Schedule it with cron for recurring self-audits. See [`agent/README.md`](agent/README.md) for install, the result schema, and crontab examples.
-
-```bash
-python3 selfaudit.py --mode audit     # writes selfaudit-report.json
-```
-
-Then open the dashboard and load that file — drag-and-drop, file picker, or paste. cron runs **on the device**; each machine schedules its own self-audit and writes its own report files, and you load whichever one you want to review.
-
----
-
-## Isn't this just Nessus?
-
-Nessus is one scan *engine*. This tool is a thin layer around it (and around nmap/Lynis/OpenVAS): one dashboard across tools, scheduling you can run on your device, a shareable self-service setup where each person audits their own device, and free baseline checks that don't need any paid plan. If all you want is to scan your own box once, Nessus alone is enough — this earns its place when you want the combined, scheduled, shareable view.
-
----
-
-## Connecting this repo to Claude
-
-This repo includes a GitHub Actions workflow at [`.github/workflows/claude.yml`](.github/workflows/claude.yml) that runs the [Claude Code GitHub Action](https://code.claude.com/docs/en/github-actions). Mention **`@claude`** in an issue or PR comment to have Claude read the repo and make changes.
-
-- Install the Claude GitHub App: <https://github.com/apps/claude>
-- Add a secret under *Settings → Secrets and variables → Actions*: `ANTHROPIC_API_KEY` (pay-as-you-go), **or** `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` (covered by your Claude subscription — no extra charge). If you use the token, change the `anthropic_api_key:` line in `claude.yml` accordingly.
-
-This is unrelated to the self-audit tool, which calls no paid API.
+The `Security Assessment/` playbook is the reference the tool automates — kept intact so you can always follow it by hand, including the optional manual Metasploit step.
 
 ---
 
 ## What this deliberately does not do
 
-It never exploits anything — it is a read-only audit with no attack or validation step. The hosted dashboard never initiates a scan and never receives data; it only reads a results file you choose to open, in your own browser. (The optional Metasploit lab step lives only in the `Security Assessment/` template playbook, for manual use.)
+It never exploits anything — it is a read-only audit. The defense-validation mode uses only benign test artifacts (no real malware, no exploit payloads) and is opt-in and off by default. It is not hosted and uploads nothing; every report stays on your machine.
 
 ## License
 

@@ -1,12 +1,12 @@
-# Self-audit schedule — runs ON THIS DEVICE.
-# Install with: crontab agent/crontab.example   (edit paths first)
+# Weekly self-audit — runs ON THIS DEVICE, against this device.
+# Install with: crontab agent/crontab.example   (edit the path first)
 #
-# Each run writes a dated report file locally. Load whichever one you want
-# to review into the dashboard (drag-drop / file picker / paste). Nothing is
-# uploaded — the dashboard reads the file in your browser.
+# Each run writes a timestamped report folder under output_dir (set in the
+# config), e.g. ~/selfaudit-reports/2026-11-24_0200/{report.html,md,csv,json}.
+# Open report.html and Save-as-PDF for the PDF.
+#
+# The defense-validation tests are intentionally NOT included here — keep them
+# manual (run `selfaudit.py --validate` yourself when you want them).
 
-# Nightly hardening + discovery audit at 02:00
-0 2 * * * cd /opt/selfaudit && /usr/bin/python3 selfaudit.py --mode audit --out "/var/log/selfaudit/report-$(date +\%Y\%m\%d).json" >> /var/log/selfaudit/run.log 2>&1
-
-# Weekly deeper scan on Sunday 03:00 (enable an optional engine in the agent)
-0 3 * * 0 cd /opt/selfaudit && /usr/bin/python3 selfaudit.py --mode audit --engine openvas --out "/var/log/selfaudit/deep-$(date +\%Y\%m\%d).json" >> /var/log/selfaudit/run.log 2>&1
+# Sundays at 02:00
+0 2 * * 0 cd /opt/selfaudit && /usr/bin/python3 selfaudit.py --config selfaudit.conf >> ~/selfaudit-reports/cron.log 2>&1

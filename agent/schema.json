@@ -58,6 +58,20 @@
         "medium": { "type": "integer" },
         "low": { "type": "integer" }
       }
+    },
+    "validation": {
+      "description": "Optional, opt-in benign defense-validation tests (EICAR + harmless markers). Not malware or exploits.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "category", "result"],
+        "properties": {
+          "name": { "type": "string" },
+          "category": { "type": "string" },
+          "result": { "type": "string", "enum": ["allowed", "blocked"] },
+          "detail": { "type": "string" }
+        }
+      }
     }
   }
 }
