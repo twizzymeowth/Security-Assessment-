@@ -1,18 +1,18 @@
 import type { AuditResult } from './types';
+import { Redis } from '@upstash/redis';
 
 // Guest data expires after 1 hour; owner data is kept.
 export const GUEST_TTL_SECONDS = 60 * 60;
 const OWNER_KEY = 'owner:audits';
 const guestKey = (id: string) => `guest:${id}:audits`;
 
-// Use Vercel KV when configured; otherwise fall back to an in-memory store
-// so local dev and an un-provisioned deploy still work (non-durable).
-export const useKV = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-
-async function kvClient() {
-  const mod = await import('@vercel/kv');
-  return mod.kv;
-}
+// Works with Vercel's KV-prefixed vars or Upstash's native ones, so it doesn't
+// matter which prefix the Upstash integration uses. If neither is set, fall
+// back to an in-memory store so local dev and an un-provisioned deploy still work.
+const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+export const useKV = Boolean(url && token);
+const redis = useKV ? new Redis({ url: url as string, token: token as string }) : null;
 
 // --- in-memory fallback ---
 type Entry = { value: AuditResult[]; expiresAt?: number };
@@ -36,18 +36,16 @@ function parseList(raw: unknown[]): AuditResult[] {
 }
 
 export async function addOwnerAudit(r: AuditResult): Promise<void> {
-  if (useKV) {
-    const kv = await kvClient();
-    await kv.lpush(OWNER_KEY, r as unknown as string);
+  if (redis) {
+    await redis.lpush(OWNER_KEY, r);
   } else {
     memPush(OWNER_KEY, r);
   }
 }
 
 export async function listOwnerAudits(): Promise<AuditResult[]> {
-  if (useKV) {
-    const kv = await kvClient();
-    const raw = (await kv.lrange(OWNER_KEY, 0, 49)) as unknown[];
+  if (redis) {
+    const raw = (await redis.lrange(OWNER_KEY, 0, 49)) as unknown[];
     return parseList(raw);
   }
   return memGet(OWNER_KEY);
@@ -60,10 +58,9 @@ export function newSessionId(): string {
 
 export async function addGuestAudit(session: string, r: AuditResult): Promise<void> {
   const key = guestKey(session);
-  if (useKV) {
-    const kv = await kvClient();
-    await kv.lpush(key, r as unknown as string);
-    await kv.expire(key, GUEST_TTL_SECONDS);
+  if (redis) {
+    await redis.lpush(key, r);
+    await redis.expire(key, GUEST_TTL_SECONDS);
   } else {
     memPush(key, r, GUEST_TTL_SECONDS);
   }
@@ -71,9 +68,8 @@ export async function addGuestAudit(session: string, r: AuditResult): Promise<vo
 
 export async function listGuestAudits(session: string): Promise<AuditResult[]> {
   const key = guestKey(session);
-  if (useKV) {
-    const kv = await kvClient();
-    const raw = (await kv.lrange(key, 0, 49)) as unknown[];
+  if (redis) {
+    const raw = (await redis.lrange(key, 0, 49)) as unknown[];
     return parseList(raw);
   }
   return memGet(key);
@@ -81,9 +77,8 @@ export async function listGuestAudits(session: string): Promise<AuditResult[]> {
 
 export async function deleteGuest(session: string): Promise<void> {
   const key = guestKey(session);
-  if (useKV) {
-    const kv = await kvClient();
-    await kv.del(key);
+  if (redis) {
+    await redis.del(key);
   } else {
     mem.delete(key);
   }
