@@ -9,9 +9,9 @@ is uploaded and no server stores your results.
 The parsing TODOs are left for you to complete; the structure, CLI, engine
 calls, and the file output are wired up.
 
-Safety: audits the local host only. Baseline engines (nmap, lynis) are
-read-only. The validate/both modes are opt-in and must stay gated behind
-the dashboard checkpoint and run only in a lab.
+Safety: audits the local host only and is read-only. It runs nmap + Lynis
+(and optionally OpenVAS/Nessus) against this machine and never exploits
+anything.
 """
 import argparse
 import json
@@ -94,7 +94,7 @@ def build_result(mode, engines, target, events, findings, started):
 
 def main():
     ap = argparse.ArgumentParser(description="Self-audit this host and write a result JSON file to load into the dashboard.")
-    ap.add_argument("--mode", choices=["audit", "validate", "both"], default="audit")
+    ap.add_argument("--mode", choices=["audit"], default="audit")
     ap.add_argument("--target", default="127.0.0.1", help="Host to audit (default: this host).")
     ap.add_argument("--engine", action="append", default=[], help="Optional extra engine: openvas|nessus")
     ap.add_argument("--out", default="selfaudit-report.json",
@@ -107,7 +107,7 @@ def main():
 
     engine_nmap(args.target, events, findings)
     engine_lynis(events, findings)
-    # TODO: dispatch optional engines in args.engine; validation stays manual/gated.
+    # TODO: dispatch optional engines in args.engine (openvas/nessus). All read-only.
 
     result = build_result(args.mode, engines, args.target, events, findings, started)
 

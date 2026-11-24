@@ -37,7 +37,7 @@ function validateReport(obj: unknown): { value?: AuditResult; error?: string } {
   for (const k of req) if (!(k in o)) return { error: `Missing required field: "${k}".` };
   const device = o.device as Record<string, unknown> | undefined;
   if (!device || typeof device.id !== 'string') return { error: 'device.id (a string) is required.' };
-  if (!['audit', 'validate', 'both'].includes(o.mode as string)) return { error: `Invalid mode: "${String(o.mode)}".` };
+  if (o.mode !== 'audit') return { error: `Invalid mode: "${String(o.mode)}" — this tool is audit-only.` };
   if (!Array.isArray(o.engines)) return { error: 'engines must be an array.' };
   if (!Array.isArray(o.findings)) return { error: 'findings must be an array.' };
   for (const f of o.findings as Record<string, unknown>[]) {
@@ -298,7 +298,7 @@ export default function Page() {
             </div>
           </Card>
 
-          <Card title='Validation checkpoint' badge='manual' badgeTone='amber'>
+          <Card title='Approval checkpoint' badge='manual' badgeTone='amber'>
             <div className='rounded-xl border border-dashed border-amber-500/60 bg-amber-500/5 p-3.5'>
               <strong className='text-sm'>Human approval required</strong>
               <p className='mt-1.5 text-sm text-slate-600 dark:text-slate-400'>
@@ -341,19 +341,22 @@ export default function Page() {
           </Card>
 
           <Card title='Export report' badge='on demand' badgeTone='slate' hint='saved locally'>
-            <p className='text-sm text-slate-600 dark:text-slate-400'>Download the current report. Everything is generated in your browser — nothing is sent anywhere.</p>
+            <p className='text-sm text-slate-600 dark:text-slate-400'>A formatted assessment report — executive summary, severity breakdown, and per-finding detail. Generated in your browser; nothing is sent anywhere.</p>
             <div className='mt-3 flex flex-wrap gap-2'>
+              <button onClick={() => exportPdf(latest)} className='rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-slate-100 dark:text-slate-900'>
+                Export .pdf
+              </button>
+              <button onClick={() => download(`self-audit-${latest.device.id}.md`, buildMarkdown(latest), 'text/markdown')} className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'>
+                Export .md
+              </button>
+              <button onClick={() => download(`self-audit-${latest.device.id}.csv`, buildCsv(latest), 'text/csv')} className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'>
+                Export .csv
+              </button>
               <button onClick={() => download(`self-audit-${latest.device.id}.json`, JSON.stringify(latest, null, 2), 'application/json')} className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'>
                 Export .json
               </button>
-              <button onClick={() => download(`self-audit-${latest.device.id}.md`, buildReport(latest), 'text/markdown')} className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'>
-                Export .md
-              </button>
-              <button onClick={() => window.print()} className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'>
-                Export .pdf
-              </button>
             </div>
-            <p className='mt-2 font-mono text-[11px] text-slate-400'>PDF opens your browser&apos;s print dialog — choose &ldquo;Save as PDF&rdquo;.</p>
+            <p className='mt-2 font-mono text-[11px] text-slate-400'>PDF opens a print view — choose &ldquo;Save as PDF&rdquo;. CSV is the findings table for a spreadsheet.</p>
           </Card>
         </div>
       </div>
@@ -388,16 +391,150 @@ function Card({ title, badge, badgeTone = 'slate', hint, children }: { title: st
   );
 }
 
-function buildReport(a: AuditResult): string {
-  const lines = [
-    `# Self-Audit Report — ${a.device.id}${a.device.address ? ' (' + a.device.address + ')' : ''}`,
-    `Generated ${new Date().toLocaleString()}  ·  engines: ${a.engines.join(', ')}`,
+type Counts = { critical: number; high: number; medium: number; low: number; info: number; total: number };
+function counts(a: AuditResult): Counts {
+  const info = a.findings.filter((f) => f.severity === 'info').length;
+  const { critical, high, medium, low } = a.summary;
+  return { critical, high, medium, low, info, total: critical + high + medium + low + info };
+}
+
+function execNarrative(a: AuditResult, c: Counts): string {
+  const head = `This read-only self-audit of ${a.device.id} identified ${c.total} finding${c.total === 1 ? '' : 's'}`;
+  const tail = c.critical || c.high
+    ? ' Prioritise the critical and high-severity items, which carry the greatest exposure.'
+    : ' No critical or high-severity issues were identified; remaining items are hardening improvements.';
+  return `${head} — ${c.critical} critical, ${c.high} high, ${c.medium} medium, ${c.low} low${c.info ? `, ${c.info} informational` : ''}.${tail}`;
+}
+
+function buildMarkdown(a: AuditResult): string {
+  const c = counts(a);
+  const esc = (s?: string) => (s ?? '').replace(/\|/g, '\\|');
+  const lines: string[] = [
+    '# Self-Audit Report',
     '',
-    '## Summary',
-    `${a.summary.critical} critical, ${a.summary.high} high, ${a.summary.medium} medium, ${a.summary.low} low`,
+    `**Device:** ${a.device.id}${a.device.hostname && a.device.hostname !== a.device.id ? ' (' + a.device.hostname + ')' : ''}  `,
+    ...(a.device.os ? [`**OS:** ${a.device.os}  `] : []),
+    `**Generated:** ${new Date().toLocaleString()}  `,
+    `**Engines:** ${a.engines.join(', ')}  `,
+    `**Mode:** ${a.mode} (read-only)`,
+    '',
+    '## Executive summary',
+    '',
+    execNarrative(a, c),
+    '',
+    '## Severity breakdown',
+    '',
+    '| Severity | Count |',
+    '| --- | ---: |',
+    `| Critical | ${c.critical} |`,
+    `| High | ${c.high} |`,
+    `| Medium | ${c.medium} |`,
+    `| Low | ${c.low} |`,
+    ...(c.info ? [`| Info | ${c.info} |`] : []),
+    `| **Total** | **${c.total}** |`,
     '',
     '## Findings',
-    ...a.findings.map((f) => `- [${f.severity}] ${f.title}${f.cve ? ' (' + f.cve + ')' : ''}\n  source: ${f.source}${f.remediation ? '\n  fix: ' + f.remediation : ''}`),
+    '',
+    '| # | Severity | Finding | Source | Reference |',
+    '| ---: | --- | --- | --- | --- |',
+    ...a.findings.map((f, i) => `| ${i + 1} | ${f.severity} | ${esc(f.title)} | ${esc(f.source)}${f.port ? ' :' + esc(f.port) : ''} | ${esc(f.cve) || '—'} |`),
+    '',
+    '## Detailed findings',
+    '',
   ];
-  return lines.join('\n');
+  a.findings.forEach((f, i) => {
+    lines.push(`### ${i + 1}. ${f.title}`);
+    lines.push('');
+    lines.push(`- **Severity:** ${f.severity}`);
+    lines.push(`- **Source:** ${f.source}${f.port ? ` (port ${f.port})` : ''}`);
+    if (f.cve) lines.push(`- **Reference:** ${f.cve}`);
+    lines.push(`- **Remediation:** ${f.remediation || 'Review and remediate per your hardening baseline.'}`);
+    lines.push('');
+  });
+  lines.push('---', '', '_Generated by the Self-Audit Dashboard — read-only assessment, no exploitation performed._');
+  return lines.join('\n') + '\n';
+}
+
+function buildCsv(a: AuditResult): string {
+  const q = (v?: string) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const rows: string[][] = [['id', 'severity', 'title', 'cve', 'source', 'port', 'remediation']];
+  for (const f of a.findings) rows.push([f.id, f.severity, f.title, f.cve || '', f.source, f.port || '', f.remediation || '']);
+  return rows.map((r) => r.map(q).join(',')).join('\r\n') + '\r\n';
+}
+
+function buildHtmlReport(a: AuditResult): string {
+  const c = counts(a);
+  const esc = (s?: string) => String(s ?? '').replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string));
+  const col: Record<Severity, string> = { critical: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#059669', info: '#0284c7' };
+  const metaCount = (label: string, n: number, c2: string) =>
+    `<div class="metric"><div class="n" style="color:${c2}">${n}</div><div class="l">${label}</div></div>`;
+  const rows = a.findings
+    .map(
+      (f, i) => `<tr>
+      <td class="num">${i + 1}</td>
+      <td><span class="pill" style="background:${col[f.severity]}">${esc(f.severity)}</span></td>
+      <td><div class="t">${esc(f.title)}${f.cve ? ` <span class="cve">${esc(f.cve)}</span>` : ''}</div><div class="rem">${esc(f.remediation || 'Review and remediate per your hardening baseline.')}</div></td>
+      <td class="src">${esc(f.source)}${f.port ? ' :' + esc(f.port) : ''}</td>
+    </tr>`,
+    )
+    .join('');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-Audit Report — ${esc(a.device.id)}</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.5 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; background: #fff; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 40px 32px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin: 32px 0 14px; }
+  .meta { color: #475569; font-size: 12.5px; margin-top: 8px; }
+  .meta b { color: #0f172a; }
+  .summary { margin-top: 10px; }
+  .metrics { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 2px; }
+  .metric { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 16px; text-align: center; min-width: 78px; }
+  .metric .n { font-size: 22px; font-weight: 700; }
+  .metric .l { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid #e2e8f0; padding: 8px 8px; }
+  td { border-bottom: 1px solid #eef2f6; padding: 10px 8px; vertical-align: top; }
+  td.num, td.src { color: #64748b; font-size: 12px; white-space: nowrap; }
+  .t { font-weight: 600; }
+  .cve { font-weight: 400; color: #64748b; font-size: 11.5px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .rem { color: #475569; font-size: 12px; margin-top: 3px; }
+  .pill { color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; }
+  .foot { margin-top: 36px; color: #94a3b8; font-size: 11.5px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+  @media print { .wrap { padding: 0; } h2 { break-after: avoid; } tr { break-inside: avoid; } }
+</style></head>
+<body><div class="wrap">
+  <h1>Self-Audit Report</h1>
+  <div class="meta">
+    <b>${esc(a.device.id)}</b>${a.device.os ? ' · ' + esc(a.device.os) : ''}<br>
+    Generated ${esc(new Date().toLocaleString())} · Engines: ${esc(a.engines.join(', '))} · Mode: ${esc(a.mode)} (read-only)
+  </div>
+  <h2>Executive summary</h2>
+  <div class="summary">${esc(execNarrative(a, c))}</div>
+  <div class="metrics">
+    ${metaCount('Critical', c.critical, col.critical)}
+    ${metaCount('High', c.high, col.high)}
+    ${metaCount('Medium', c.medium, col.medium)}
+    ${metaCount('Low', c.low, col.low)}
+    ${c.info ? metaCount('Info', c.info, col.info) : ''}
+    ${metaCount('Total', c.total, '#0f172a')}
+  </div>
+  <h2>Findings</h2>
+  ${a.findings.length ? `<table><thead><tr><th>#</th><th>Severity</th><th>Finding &amp; remediation</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table>` : '<p>No findings in this report.</p>'}
+  <div class="foot">Generated by the Self-Audit Dashboard — read-only assessment, no exploitation performed. Nothing was uploaded; this report was produced in the browser.</div>
+</div>
+<script>window.onload=function(){window.focus();window.print();};</script>
+</body></html>`;
+}
+
+function exportPdf(a: AuditResult) {
+  const w = window.open('', '_blank');
+  if (!w) {
+    window.print();
+    return;
+  }
+  w.document.write(buildHtmlReport(a));
+  w.document.close();
 }

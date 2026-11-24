@@ -1,6 +1,6 @@
 # Security-Assessment- · Self-Audit Tool
 
-A self-assessment tool you run against **your own device**. A small **agent** runs on the device, audits *that same machine*, and writes a results file. You load that file into a **dashboard** (hostable on Vercel) that renders and exports it **entirely in your browser**. It uses the same kind of tooling as a formal assessment — nmap, Lynis, optionally OpenVAS / Nessus / Metasploit — reframed so a person can safely check their own posture.
+A self-assessment tool you run against **your own device**. A small **agent** runs on the device, audits *that same machine*, and writes a results file. You load that file into a **dashboard** (hostable on Vercel) that renders and exports it **entirely in your browser**. It uses the same kind of tooling as a formal assessment — nmap, Lynis, optionally OpenVAS or Nessus — reframed so a person can safely check their own posture. It is read-only: it reports, it does not exploit.
 
 The original recon-to-report playbook is kept, unchanged, as the **template** this tool is built on (see [`Security Assessment/`](Security%20Assessment/)).
 
@@ -37,8 +37,7 @@ The original recon-to-report playbook is kept, unchanged, as the **template** th
 | Hardening audit | Config/rules in place — firewall, SSH, patches, permissions | Lynis | automated |
 | Deep CVE scan *(optional)* | Fuller vulnerability coverage | OpenVAS or Nessus | automated |
 | Correlate | Rank findings, match to references | agent | automated |
-| Checkpoint | You review the shortlist and approve | — | **manual** |
-| Validation *(optional)* | Benign proof-of-execution in a lab | Metasploit | **manual** |
+| Checkpoint | You review the options and approve before running | — | **manual** |
 | Report | Load the results file and export the posture report | agent → dashboard | on demand |
 
 ### Engines — free by default, nothing required
@@ -50,9 +49,9 @@ The scan engine is pluggable, layered in this order:
 
 All engine results merge into one findings list, deduped by host + CVE, so adding an engine enriches the same report instead of splitting it. Someone with nothing extra still gets a real audit from the baseline.
 
-### Modes
+### Audit only
 
-A per-run mode, chosen in the dashboard: **Audit only** (default) · **Validation (Metasploit)** · **Both**. The dashboard toggle only reflects intent — the agent runs the engines, and the Metasploit path still stops at the manual checkpoint and runs locally. New users default to Audit only.
+The tool is read-only: it runs the scan engines and reports what it finds. It never exploits anything, and there is no attack or validation step. The original manual playbook — which does include an optional Metasploit lab step — is kept intact under `Security Assessment/` as a template for anyone who wants to run that by hand.
 
 ---
 
@@ -101,7 +100,7 @@ Then open the dashboard and load that file — drag-and-drop, file picker, or pa
 
 ## Isn't this just Nessus?
 
-Nessus is one scan *engine*. This tool is a thin layer around it (and around nmap/Lynis/OpenVAS/Metasploit): one dashboard across tools, scheduling you can see, a shareable self-service setup where each person audits their own device, and free baseline checks that don't need any paid plan. If all you want is to scan your own box once, Nessus alone is enough — this earns its place when you want the combined, scheduled, shareable view.
+Nessus is one scan *engine*. This tool is a thin layer around it (and around nmap/Lynis/OpenVAS): one dashboard across tools, scheduling you can run on your device, a shareable self-service setup where each person audits their own device, and free baseline checks that don't need any paid plan. If all you want is to scan your own box once, Nessus alone is enough — this earns its place when you want the combined, scheduled, shareable view.
 
 ---
 
@@ -118,7 +117,7 @@ This is unrelated to the self-audit tool, which calls no paid API.
 
 ## What this deliberately does not do
 
-It never auto-exploits. The Metasploit path is optional, manual, checkpoint-gated, and off by default. The hosted dashboard never initiates a scan and never receives data — it only reads a results file you choose to open, in your own browser.
+It never exploits anything — it is a read-only audit with no attack or validation step. The hosted dashboard never initiates a scan and never receives data; it only reads a results file you choose to open, in your own browser. (The optional Metasploit lab step lives only in the `Security Assessment/` template playbook, for manual use.)
 
 ## License
 

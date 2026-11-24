@@ -8,7 +8,7 @@ You are writing the Python agent; this folder gives you the contract to build ag
 
 - The agent audits **its own host only**. The default target is `127.0.0.1` / the machine's own addresses.
 - Baseline engines are **read-only**: nmap (network exposure) + Lynis (host hardening).
-- The Metasploit/validation path is **opt-in**, requires the dashboard checkpoint to be approved, and should run only in a lab. Keep it off by default.
+- It is **read-only end to end**: it reports what it finds and never exploits anything. There is no attack or validation step. (The original manual playbook, including the optional Metasploit lab step, is kept separately under `Security Assessment/` as a template.)
 
 ## Engines
 
@@ -18,7 +18,6 @@ You are writing the Python agent; this folder gives you the contract to build ag
 | Lynis | Inside-out: hardening — firewall, SSH, patches, permissions (`lynis audit system`) | baseline |
 | OpenVAS / Greenbone CE | Optional free deep CVE scan | optional |
 | Nessus | Optional deep CVE scan via local Nessus API (bring-your-own key) | optional |
-| Metasploit | Optional manual, checkpoint-gated validation | optional |
 
 ## Install (on the device being audited)
 

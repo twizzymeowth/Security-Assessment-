@@ -24,6 +24,6 @@ export const sampleAudits: AuditResult[] = [
       { id: 'f4', severity: 'high', title: 'No host firewall active', source: 'lynis', remediation: 'Enable ufw / nftables with a default-deny policy.' },
       { id: 'f5', severity: 'medium', title: 'HTTP service without TLS redirect', source: 'nmap', port: '80', remediation: 'Redirect 80 to 443.' },
     ],
-    summary: { critical: 1, high: 3, medium: 7, low: 5 },
+    summary: { critical: 1, high: 3, medium: 1, low: 0 },
   },
 ];
