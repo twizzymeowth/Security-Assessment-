@@ -83,3 +83,16 @@ export async function deleteGuest(session: string): Promise<void> {
     mem.delete(key);
   }
 }
+
+// Diagnostic: report the active backend and, for Upstash, a live write-read round-trip.
+export async function pingStore(): Promise<{ backend: 'upstash' | 'memory'; ok: boolean; error?: string }> {
+  if (!redis) return { backend: 'memory', ok: false };
+  const token = 'health:' + Date.now();
+  try {
+    await redis.set('health:probe', token, { ex: 30 });
+    const got = await redis.get('health:probe');
+    return { backend: 'upstash', ok: String(got) === token };
+  } catch (e) {
+    return { backend: 'upstash', ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
