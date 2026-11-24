@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { AuditEvent, AuditResult, Mode, Severity } from '@/lib/types';
 import { sampleAudits } from '@/lib/sample';
 
@@ -41,6 +41,40 @@ function nowStr() {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+// Client-side validation against agent/schema.json (required fields + enums).
+function validateReport(obj: unknown): { value?: AuditResult; error?: string } {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { error: 'The report must be a JSON object.' };
+  const o = obj as Record<string, unknown>;
+  const req = ['agent_version', 'device', 'mode', 'engines', 'started_at', 'finished_at', 'findings', 'summary'];
+  for (const k of req) if (!(k in o)) return { error: `Missing required field: "${k}".` };
+  const device = o.device as Record<string, unknown> | undefined;
+  if (!device || typeof device.id !== 'string') return { error: 'device.id (a string) is required.' };
+  if (!['audit', 'validate', 'both'].includes(o.mode as string)) return { error: `Invalid mode: "${String(o.mode)}".` };
+  if (!Array.isArray(o.engines)) return { error: 'engines must be an array.' };
+  if (!Array.isArray(o.findings)) return { error: 'findings must be an array.' };
+  for (const f of o.findings as Record<string, unknown>[]) {
+    if (!f || typeof f.id !== 'string' || typeof f.title !== 'string' || typeof f.source !== 'string')
+      return { error: 'Each finding needs string id, title and source.' };
+    if (!['critical', 'high', 'medium', 'low', 'info'].includes(f.severity as string))
+      return { error: `Invalid finding severity: "${String(f.severity)}".` };
+  }
+  const s = o.summary as Record<string, unknown> | undefined;
+  if (!s || ['critical', 'high', 'medium', 'low'].some((k) => typeof s[k] !== 'number'))
+    return { error: 'summary needs numeric critical, high, medium and low.' };
+  return { value: obj as AuditResult };
+}
+
+function download(filename: string, text: string, mime: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function Page() {
   const [audits, setAudits] = useState<AuditResult[]>(sampleAudits);
   const [isSample, setIsSample] = useState(true);
@@ -48,27 +82,56 @@ export default function Page() {
   const [engine, setEngine] = useState<'none' | 'openvas' | 'nessus'>('none');
   const [approved, setApproved] = useState<string | null>(null);
   const [extra, setExtra] = useState<AuditEvent[]>([]);
-  const [report, setReport] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    fetch('/api/audits')
-      .then((r) => r.json())
-      .then((d) => {
-        if (!active || !d || !Array.isArray(d.audits) || d.audits.length === 0) return;
-        setAudits(d.audits);
-        setIsSample(Boolean(d.sample));
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
+  const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const latest = audits[0];
   const events = useMemo(() => [...extra, ...(latest.events || [])], [extra, latest]);
   const maxSev = Math.max(1, latest.summary.critical, latest.summary.high, latest.summary.medium, latest.summary.low);
+
+  function ingestText(text: string) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      setError('That is not valid JSON.');
+      return;
+    }
+    const { value, error: err } = validateReport(parsed);
+    if (err || !value) {
+      setError(err || 'The report did not match the expected schema.');
+      return;
+    }
+    setAudits([value]);
+    setIsSample(false);
+    setExtra([]);
+    setApproved(null);
+    setMode(value.mode);
+    setError(null);
+    setShowPaste(false);
+    setPasteText('');
+  }
+
+  function handleFiles(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    file
+      .text()
+      .then(ingestText)
+      .catch(() => setError('Could not read that file.'));
+  }
+
+  function loadSample() {
+    setAudits(sampleAudits);
+    setIsSample(true);
+    setExtra([]);
+    setApproved(null);
+    setError(null);
+  }
 
   function sim(steps: AuditEvent[]) {
     if (running) return;
@@ -92,26 +155,104 @@ export default function Page() {
       <div className='flex flex-wrap items-end justify-between gap-4'>
         <div className='min-w-0'>
           <div className='font-mono text-[11px] uppercase tracking-[0.14em] text-slate-400'>
-            Hosted on Vercel · Control plane · Benign self-audit
+            Runs in your browser · Nothing is uploaded · Benign self-audit
           </div>
           <h1 className='mt-1 text-2xl font-semibold tracking-tight sm:text-3xl'>Self-Audit Dashboard</h1>
           <div className='mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-slate-500 dark:text-slate-400'>
-            <span>device <b className='text-slate-700 dark:text-slate-200'>{latest.device.id} · {latest.device.address}</b></span>
-            <span>os <b className='text-slate-700 dark:text-slate-200'>{latest.device.os}</b></span>
+            <span>device <b className='text-slate-700 dark:text-slate-200'>{latest.device.id}{latest.device.address ? ' · ' + latest.device.address : ''}</b></span>
+            {latest.device.os && <span>os <b className='text-slate-700 dark:text-slate-200'>{latest.device.os}</b></span>}
             <span>engines <b className='text-slate-700 dark:text-slate-200'>{latest.engines.join(', ')}</b></span>
           </div>
         </div>
         <span className='inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400'>
           <span className='h-2 w-2 rounded-full bg-emerald-500' />
-          Last run passed
+          {isSample ? 'Example loaded' : 'Report loaded'}
         </span>
       </div>
 
-      {isSample && (
-        <div className='mt-3 inline-block rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-mono text-[11px] text-amber-700 dark:text-amber-400'>
-          Example data — waiting for your agent to report in
+      {/* load report */}
+      <section className='mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900'>
+        <div className='mb-3 flex items-center justify-between gap-2'>
+          <h2 className='flex items-center gap-2 text-sm font-semibold'>
+            Load your report
+            <span className='rounded-full border border-cyan-500/40 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-cyan-700 dark:text-cyan-400'>in browser</span>
+          </h2>
+          {!isSample && (
+            <button onClick={loadSample} className='font-mono text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'>
+              reset to example
+            </button>
+          )}
         </div>
-      )}
+
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            handleFiles(e.dataTransfer.files);
+          }}
+          className={`rounded-xl border-2 border-dashed p-5 text-center transition-colors ${dragging ? 'border-cyan-500 bg-cyan-500/5' : 'border-slate-300 dark:border-slate-700'}`}
+        >
+          <p className='text-sm font-medium'>Drag &amp; drop your agent&apos;s report JSON here</p>
+          <p className='mt-1 font-mono text-[11px] text-slate-400'>produced by <code>selfaudit.py --out report.json</code> — it never leaves this page</p>
+          <div className='mt-3 flex flex-wrap justify-center gap-2'>
+            <button
+              onClick={() => fileRef.current?.click()}
+              className='rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white'
+            >
+              Choose file…
+            </button>
+            <button
+              onClick={() => setShowPaste((v) => !v)}
+              className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'
+            >
+              {showPaste ? 'Hide paste' : 'Paste JSON'}
+            </button>
+            <input
+              ref={fileRef}
+              type='file'
+              accept='application/json,.json'
+              className='hidden'
+              onChange={(e) => handleFiles(e.target.files)}
+            />
+          </div>
+        </div>
+
+        {showPaste && (
+          <div className='mt-3'>
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder='Paste the report JSON here…'
+              className='h-36 w-full rounded-lg border border-slate-300 bg-slate-50 p-3 font-mono text-xs dark:border-slate-700 dark:bg-slate-950'
+            />
+            <div className='mt-2 flex justify-end'>
+              <button
+                onClick={() => ingestText(pasteText)}
+                className='rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'
+                disabled={!pasteText.trim()}
+              >
+                Load pasted JSON
+              </button>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className='mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 font-mono text-[11px] text-red-700 dark:text-red-400'>
+            {error}
+          </div>
+        )}
+        {isSample && !error && (
+          <div className='mt-3 inline-block rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-mono text-[11px] text-amber-700 dark:text-amber-400'>
+            Showing example data — load a report to see your own results
+          </div>
+        )}
+      </section>
 
       {/* mode + engine pickers */}
       <div className='mt-5 flex flex-wrap items-center gap-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900'>
@@ -158,14 +299,14 @@ export default function Page() {
             <div className='mb-3 flex flex-wrap gap-2'>
               <button
                 onClick={() => sim([
-                  { ts: '', status: 'run', title: 'Manual run: discovery started', detail: `nmap -sV -sC --script vuln ${latest.device.address}` },
+                  { ts: '', status: 'run', title: 'Manual run: discovery started', detail: `nmap -sV -sC --script vuln ${latest.device.address ?? '127.0.0.1'}` },
                   { ts: '', status: 'info', title: 'Scanning own host…', detail: 'agent → localhost' },
-                  { ts: '', status: 'ok', title: 'Discovery complete', detail: 'results streamed to dashboard' },
+                  { ts: '', status: 'ok', title: 'Discovery complete', detail: 'load the new report to refresh findings' },
                 ])}
                 disabled={running}
                 className='rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'
               >
-                ▶ Run self-audit now
+                ▶ Preview a run
               </button>
               <button
                 onClick={() => sim([
@@ -222,7 +363,7 @@ export default function Page() {
             <div className='rounded-xl border border-dashed border-amber-500/60 bg-amber-500/5 p-3.5'>
               <strong className='text-sm'>Human approval required</strong>
               <p className='mt-1.5 text-sm text-slate-600 dark:text-slate-400'>
-                Discovery and scanning run on their own. Any benign validation is held here until you approve — the tool never auto-exploits your device.
+                Discovery and scanning run on their own device. Any benign validation is held here until you approve — the tool never auto-exploits your device.
               </p>
               <button
                 onClick={() => setApproved(new Date().toLocaleString())}
@@ -238,29 +379,40 @@ export default function Page() {
             </div>
           </Card>
 
-          <Card title='Export report' badge='on demand' badgeTone='slate'>
-            <button
-              onClick={() => setReport(buildReport(latest))}
-              className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'
-            >
-              Generate report
-            </button>
+          <Card title='Export report' badge='on demand' badgeTone='slate' hint='saved locally'>
+            <p className='text-sm text-slate-600 dark:text-slate-400'>
+              Download the current report. Everything is generated in your browser — nothing is sent anywhere.
+            </p>
             <div className='mt-3 flex flex-wrap gap-2'>
-              {['.md', '.json', '.pdf', 'Faraday'].map((f) => (
-                <span key={f} className='rounded-md border border-slate-200 bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400'>{f}</span>
-              ))}
+              <button
+                onClick={() => download(`self-audit-${latest.device.id}.json`, JSON.stringify(latest, null, 2), 'application/json')}
+                className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'
+              >
+                Export .json
+              </button>
+              <button
+                onClick={() => download(`self-audit-${latest.device.id}.md`, buildReport(latest), 'text/markdown')}
+                className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'
+              >
+                Export .md
+              </button>
+              <button
+                onClick={() => window.print()}
+                className='rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700'
+              >
+                Export .pdf
+              </button>
             </div>
-            {report && (
-              <pre className='mt-3 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-200'>{report}</pre>
-            )}
+            <p className='mt-2 font-mono text-[11px] text-slate-400'>PDF opens your browser&apos;s print dialog — choose &ldquo;Save as PDF&rdquo;.</p>
           </Card>
         </div>
       </div>
 
       <p className='mt-6 max-w-3xl text-xs leading-relaxed text-slate-400'>
-        <b>How it fits together.</b> This dashboard is the control plane. It does not run the tools — a Python agent on your
-        device runs nmap + Lynis (and optionally OpenVAS/Nessus) against the host it runs on, on a crontab schedule, and POSTs each
-        result here. Read-only audit is automated; validation stays manual behind the checkpoint. The server never scans anything.
+        <b>How it fits together.</b> A Python agent on your device runs nmap + Lynis (and optionally OpenVAS/Nessus) against the
+        host it runs on, on a crontab schedule, and writes a result JSON file. You load that file into this page, which validates,
+        renders and exports it entirely in your browser. Nothing is uploaded and no server stores your results — so hosting it
+        publicly only ever lets each person view their own report on their own machine.
       </p>
     </main>
   );
@@ -307,7 +459,7 @@ function Card({ title, badge, badgeTone = 'slate', hint, children }: { title: st
 
 function buildReport(a: AuditResult): string {
   const lines = [
-    `# Self-Audit Report — ${a.device.id} (${a.device.address})`,
+    `# Self-Audit Report — ${a.device.id}${a.device.address ? ' (' + a.device.address + ')' : ''}`,
     `Generated ${new Date().toLocaleString()}  ·  engines: ${a.engines.join(', ')}`,
     '',
     '## Summary',
