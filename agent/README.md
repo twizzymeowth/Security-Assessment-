@@ -1,6 +1,6 @@
 # Self-Audit Agent
 
-The agent runs on the device you want to audit. It runs the scan engines against **the host it runs on**, builds a result JSON (see [`schema.json`](schema.json)), and POSTs it to your dashboard's `/api/audits` endpoint.
+The agent runs on the device you want to audit. It runs the scan engines against **the host it runs on**, builds a result JSON (see [`schema.json`](schema.json)), and **writes it to a file**. You then load that file into the dashboard — nothing is uploaded and no server stores your results.
 
 You are writing the Python agent; this folder gives you the contract to build against plus a skeleton to complete.
 
@@ -24,23 +24,24 @@ You are writing the Python agent; this folder gives you the contract to build ag
 
 ```bash
 sudo apt install -y nmap lynis        # baseline engines
-pip install -r requirements.txt        # python deps (requests)
+# no third-party Python packages needed — the agent is standard library only
 ```
 
 ## Run
 
 ```bash
-python3 selfaudit.py \
-  --dashboard https://your-app.vercel.app \
-  --token "$SELFAUDIT_TOKEN" \
-  --mode audit                         # audit | validate | both
+python3 selfaudit.py --mode audit                 # audit | validate | both
+# writes ./selfaudit-report.json
+
+python3 selfaudit.py --out ~/reports/laptop.json  # choose the output path
+python3 selfaudit.py --out -                       # or print JSON to stdout
 ```
 
-The script runs the baseline engines, assembles a result matching `schema.json`, and POSTs it to `<dashboard>/api/audits` with an `Authorization: Bearer <token>` header.
+The script runs the baseline engines, assembles a result matching `schema.json`, and writes it to the file. Then open the dashboard and load that file (drag-and-drop, **Choose file…**, or **Paste JSON**). The dashboard validates, renders and exports it — all in your browser.
 
 ## Schedule (cron, on the device)
 
-See [`crontab.example`](crontab.example). cron runs on the device, not on Vercel — each machine audits itself on its own schedule and reports in.
+See [`crontab.example`](crontab.example). cron runs on the device and writes a dated report file each run; you load whichever one you want to review into the dashboard. Each machine audits itself on its own schedule.
 
 ## Result schema
 

@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Self-audit agent (skeleton).
 
-Runs read-only scan engines against THIS host and POSTs a result to the
-dashboard. The parsing TODOs are left for you to complete; the structure,
-CLI, engine calls, and the POST are wired up.
+Runs read-only scan engines against THIS host and writes a result JSON
+file. You then load that file into the dashboard (drag-drop, file picker
+or paste), which renders and exports it entirely in your browser. Nothing
+is uploaded and no server stores your results.
+
+The parsing TODOs are left for you to complete; the structure, CLI, engine
+calls, and the file output are wired up.
 
 Safety: audits the local host only. Baseline engines (nmap, lynis) are
 read-only. The validate/both modes are opt-in and must stay gated behind
@@ -16,11 +20,6 @@ import socket
 import subprocess
 import sys
 from datetime import datetime, timezone
-
-try:
-    import requests
-except ImportError:
-    requests = None  # only needed when actually posting
 
 AGENT_VERSION = "0.1.0"
 
@@ -94,13 +93,12 @@ def build_result(mode, engines, target, events, findings, started):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Self-audit this host and report to the dashboard.")
-    ap.add_argument("--dashboard", help="Dashboard base URL, e.g. https://your-app.vercel.app")
-    ap.add_argument("--token", help="Agent bearer token for the dashboard.")
+    ap = argparse.ArgumentParser(description="Self-audit this host and write a result JSON file to load into the dashboard.")
     ap.add_argument("--mode", choices=["audit", "validate", "both"], default="audit")
     ap.add_argument("--target", default="127.0.0.1", help="Host to audit (default: this host).")
     ap.add_argument("--engine", action="append", default=[], help="Optional extra engine: openvas|nessus")
-    ap.add_argument("--out", help="Write result JSON to this file instead of / in addition to posting.")
+    ap.add_argument("--out", default="selfaudit-report.json",
+                    help="Write result JSON to this file (default: selfaudit-report.json). Use '-' for stdout.")
     args = ap.parse_args()
 
     started = now_iso()
@@ -113,25 +111,13 @@ def main():
 
     result = build_result(args.mode, engines, args.target, events, findings, started)
 
-    if args.out:
+    if args.out == "-":
+        json.dump(result, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
         with open(args.out, "w") as fh:
             json.dump(result, fh, indent=2)
-        print(f"wrote {args.out}")
-
-    if args.dashboard:
-        if requests is None:
-            print("requests not installed; pip install -r requirements.txt", file=sys.stderr)
-            return 1
-        r = requests.post(
-            args.dashboard.rstrip("/") + "/api/audits",
-            json=result,
-            headers={"Authorization": f"Bearer {args.token}"} if args.token else {},
-            timeout=30,
-        )
-        print(f"posted: {r.status_code}")
-        if r.status_code >= 400:
-            print(r.text, file=sys.stderr)
-            return 1
+        print(f"wrote {args.out} — load it into the dashboard to view and export")
     return 0
 
 

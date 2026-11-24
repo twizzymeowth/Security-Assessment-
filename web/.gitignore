@@ -6,3 +6,6 @@
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+
+# local build artifacts
+package-lock.json
