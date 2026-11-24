@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SelfAuditResult",
-  "description": "The result payload the agent POSTs to the dashboard /api/audits endpoint.",
+  "description": "The result file the agent writes; you load it into the dashboard to view and export. Read-only self-audit — no exploitation.",
   "type": "object",
   "required": ["agent_version", "device", "mode", "engines", "started_at", "finished_at", "findings", "summary"],
   "properties": {
@@ -16,8 +16,8 @@
         "address": { "type": "string", "description": "The host address audited (default 127.0.0.1)." }
       }
     },
-    "mode": { "type": "string", "enum": ["audit", "validate", "both"] },
-    "engines": { "type": "array", "items": { "type": "string", "enum": ["nmap", "lynis", "openvas", "nessus", "metasploit"] } },
+    "mode": { "type": "string", "enum": ["audit"] },
+    "engines": { "type": "array", "items": { "type": "string", "enum": ["nmap", "lynis", "openvas", "nessus"] } },
     "started_at": { "type": "string", "format": "date-time" },
     "finished_at": { "type": "string", "format": "date-time" },
     "events": {
